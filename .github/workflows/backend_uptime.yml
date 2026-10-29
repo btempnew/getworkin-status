@@ -1,0 +1,38 @@
+name: Backend Uptime Check
+
+on:
+  schedule:
+    # UTC; offset from the hour to avoid GitHub's busiest scheduling times.
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: backend-uptime
+  cancel-in-progress: false
+
+jobs:
+  health:
+    name: Check Render backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      BACKEND_HEALTH_URL: https://getworkin-api.onrender.com/health/matching
+    steps:
+      - name: Request backend health
+        run: |
+          curl --fail --silent --show-error \
+            --connect-timeout 15 --max-time 90 \
+            --retry 2 --retry-all-errors --retry-delay 10 \
+            --user-agent 'Getworkin-Health-Monitor/1.0' \
+            --output health.json "$BACKEND_HEALTH_URL"
+          python3 - <<'PY'
+          import json
+          with open('health.json', encoding='utf-8') as response:
+              payload = json.load(response)
+          if payload.get('status') != 'ok':
+              raise SystemExit('Backend health response did not report ok')
+          print('Backend is reachable and reports healthy.')
+          PY
+          echo 'Backend health check passed.' >> "$GITHUB_STEP_SUMMARY"
